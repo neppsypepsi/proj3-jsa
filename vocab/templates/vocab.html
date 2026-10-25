@@ -80,36 +80,67 @@
 <br />
 <div class="row">
   <div class="col-xs-6 text-center">
-  <form id="entry" method="POST" action="/_check">
+  <form id="entry" method="GET" action="/_check">
     <label for="attempt">Word:</label>
     <input id="attempt" name="attempt" type="text" width="15"
       autocomplete="off"  autofocus />
-    <input type="submit" name="try" />
   </form>
 </div></div>
 
 <br />
 
-{% if session.matches|length is not equalto 0  %}
+<!-- Filled in by JavaScript; hidden until the first match -->
+<div id="found"
+  {% if session.matches|length is equalto 0 %}style="display: none;"{% endif %}>
 <h2>You found </h2>
 <p id="results">
   {% for match in session.matches %}
-  {{ match }} 
+  {{ match }}
   {% endfor %}
 </p>
-{% endif %}
+</div>
 
-
-{% with messages = get_flashed_messages() %}
-  {% if messages %}
-    <!-- Mismatch, already found, etc. "flashed" from Python -->
-    {% for message in messages %}
-      <p class="message">{{ message }}</p>
-    {% endfor %}
-  {% endif %}
-{% endwith %}
-
+<!-- Found a word, already found, etc.; set by JavaScript -->
+<p id="message" class="message"></p>
 
 
  </div> <!-- container -->
+
+<script>
+
+// Suppress normal form submission (e.g., pressing Enter)
+$("#entry").submit( function(event) {
+   event.preventDefault();
+  });
+
+// On each keystroke, ask the server whether the current
+// text is a word from the list that can be made from the jumble.
+// We use 'keyup' because the field value is updated by then.
+$("#attempt").keyup(function(event) {
+   var txt = $("#attempt").val();  // Current content of the input field
+   if (txt.length == 0) { return; }
+   var enter_pressed = (event.which == 13);
+
+   $.getJSON( "/_check", { text: txt },
+              function(data) {
+                var rslt = data.result;
+                if (rslt.done) {
+                   // Found enough words; go to the success page
+                   window.location.href = "/success";
+                } else if (rslt.new_match) {
+                   // Show the updated list and clear the field for the next word
+                   $("#results").text(rslt.matches.join(" "));
+                   $("#found").show();
+                   $("#message").text(rslt.message);
+                   $("#attempt").val("");
+                } else if (enter_pressed) {
+                   // Only explain a miss when they say they're done typing;
+                   // otherwise they're probably partway through a word
+                   $("#message").text(rslt.message);
+                }
+              }
+           );
+   });
+
+</script>
 </body> </html>

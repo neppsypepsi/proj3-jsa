@@ -67,27 +67,25 @@ def success():
     return flask.render_template('success.html')
 
 #######################
-# Form handler.
-# CIS 322 note:
-#   You'll need to change this to a
-#   a JSON request handler
+# AJAX request handler
+#   Called by JavaScript on each keystroke; returns
+#   JSON rather than rendering a new page.
 #######################
 
 
-@app.route("/_check", methods=["POST"])
+@app.route("/_check", methods=["GET"])
 def check():
     """
-    User has submitted the form with a word ('attempt')
-    that should be formed from the jumble and on the
-    vocabulary list.  We respond depending on whether
-    the word is on the vocab list (therefore correctly spelled),
-    made only from the jumble letters, and not a word they
-    already found.
+    JavaScript sends the current contents of the input
+    field as 'text'.  We check whether it is on the vocab
+    list (therefore correctly spelled), made only from the
+    jumble letters, and not a word they already found, and
+    return the result as JSON for the page to display.
     """
     app.logger.debug("Entering check")
 
-    # The data we need, from form and from cookie
-    text = flask.request.form["attempt"]
+    # The data we need, from the request URL and from cookie
+    text = flask.request.args.get("text", default="", type=str)
     jumble = flask.session["jumble"]
     matches = flask.session.get("matches", [])  # Default to empty list
 
@@ -95,27 +93,31 @@ def check():
     in_jumble = LetterBag(jumble).contains(text)
     matched = WORDS.has(text)
 
-    # Respond appropriately
+    # Decide what to tell the page
+    new_match = False
     if matched and in_jumble and not (text in matches):
         # Cool, they found a new word
         matches.append(text)
         flask.session["matches"] = matches
+        new_match = True
+        message = "You found {}!".format(text)
     elif text in matches:
-        flask.flash("You already found {}".format(text))
+        message = "You already found {}".format(text)
     elif not matched:
-        flask.flash("{} isn't in the list of words".format(text))
+        message = "{} isn't in the list of words".format(text)
     elif not in_jumble:
-        flask.flash(
-            '"{}" can\'t be made from the letters {}'.format(text, jumble))
+        message = '"{}" can\'t be made from the letters {}'.format(
+            text, jumble)
     else:
         app.logger.debug("This case shouldn't happen!")
         assert False  # Raises AssertionError
 
-    # Choose page:  Solved enough, or keep going?
-    if len(matches) >= flask.session["target_count"]:
-       return flask.redirect(flask.url_for("success"))
-    else:
-       return flask.redirect(flask.url_for("keep_going"))
+    # Solved enough?  The JavaScript decides whether to go to /success
+    done = len(matches) >= flask.session["target_count"]
+
+    rslt = {"new_match": new_match, "message": message,
+            "matches": matches, "done": done}
+    return flask.jsonify(result=rslt)
 
 ###############
 # AJAX request handlers
@@ -175,6 +177,6 @@ if __name__ == "__main__":
     if CONFIG.DEBUG:
         app.debug = True
         app.logger.setLevel(logging.DEBUG)
-        app.logger.info(
-            "Opening for global access on port {}".format(CONFIG.PORT))
-        app.run(port=CONFIG.PORT, host="0.0.0.0")
+    app.logger.info(
+        "Opening for global access on port {}".format(CONFIG.PORT))
+    app.run(port=CONFIG.PORT, host="0.0.0.0")
